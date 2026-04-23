@@ -14,7 +14,10 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+}));
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -25,6 +28,11 @@ app.use('/api/v1/users', require('./src/routes/users'));
 app.use('/api/v1/universities', require('./src/routes/universities'));
 app.use('/api/v1/repositories', require('./src/routes/repositories'));
 app.use('/api/v1/ml', require('./src/routes/ml'));
+
+// Health check for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 // Basic route
 app.get('/', (req, res) => {
