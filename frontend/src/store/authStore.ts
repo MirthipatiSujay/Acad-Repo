@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { api } from '../lib/api';
 
 interface User {
+  _id?: string;
   id: string;
   username: string;
   email: string;
