@@ -6,6 +6,7 @@ const fileSchema = new mongoose.Schema({
   path: { type: String, required: true },
   size: { type: Number },
   mimetype: { type: String },
+  content: { type: String, default: '' }, // Store text content for plagiarism checks
   uploadedAt: { type: Date, default: Date.now },
 });
 

@@ -14,26 +14,12 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Multer storage configuration
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// Multer memory storage (works on ephemeral filesystems like Render free tier)
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    // Optional: filter file types here. Currently allowing all for simplicity, 
-    // but in a real app you'd restrict to known code/doc formats.
-    cb(null, true);
-  },
 });
 
 // @route   POST /api/v1/repositories
@@ -46,8 +32,6 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
     // Check if repository with same name exists for this user
     const existingRepo = await Repository.findOne({ owner: req.user._id, name });
     if (existingRepo) {
-      // Clean up uploaded files since we're rejecting
-      if (req.files) req.files.forEach(f => fs.existsSync(f.path) && fs.unlinkSync(f.path));
       return res.status(400).json({ success: false, message: 'Repository with this name already exists' });
     }
 
@@ -57,23 +41,20 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
     if (req.files && req.files.length > 0) {
       const { checkPlagiarism } = require('../utils/plagiarism');
 
-      // Fetch existing files from all other repositories for comparison
-      const otherRepos = await Repository.find().limit(50);
+      // Fetch existing file content from MongoDB (works on ephemeral filesystems)
+      const otherRepos = await Repository.find({ owner: { $ne: req.user._id } }).limit(50);
       let existingFiles = [];
       for (const repo of otherRepos) {
         for (const file of repo.files) {
-          try {
-            const filePath = path.resolve(file.path);
-            if (fs.existsSync(filePath)) {
-              existingFiles.push({
-                id: file._id,
-                repositoryId: repo._id,
-                repositoryName: repo.name,
-                fileName: file.originalName,
-                content: fs.readFileSync(filePath, 'utf8'),
-              });
-            }
-          } catch (err) { /* skip unreadable files */ }
+          if (file.content) {
+            existingFiles.push({
+              id: file._id,
+              repositoryId: repo._id,
+              repositoryName: repo.name,
+              fileName: file.originalName,
+              content: file.content,
+            });
+          }
         }
       }
 
@@ -81,13 +62,10 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
       if (existingFiles.length > 0) {
         for (const uploadedFile of req.files) {
           try {
-            const content = fs.readFileSync(uploadedFile.path, 'utf8');
+            const content = uploadedFile.buffer.toString('utf8');
             const result = await checkPlagiarism(content, existingFiles);
 
             if (result.score >= PLAGIARISM_THRESHOLD) {
-              // Clean up ALL uploaded temp files before rejecting
-              req.files.forEach(f => fs.existsSync(f.path) && fs.unlinkSync(f.path));
-
               return res.status(403).json({
                 success: false,
                 message: `Upload rejected: "${uploadedFile.originalname}" has ${result.score}% similarity with existing projects (threshold: ${PLAGIARISM_THRESHOLD}%).`,
@@ -101,20 +79,26 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
               });
             }
           } catch (readErr) {
-            // If file can't be read as text (e.g. binary), skip plagiarism check for it
+            // Binary files skip plagiarism check
           }
         }
       }
     }
     // --- End Plagiarism Check ---
 
-    const files = req.files ? req.files.map((file) => ({
-      originalName: file.originalname,
-      storedName: file.filename,
-      path: file.path,
-      size: file.size,
-      mimetype: file.mimetype,
-    })) : [];
+    // Build file objects — store content in MongoDB for future plagiarism checks
+    const files = req.files ? req.files.map((file) => {
+      let textContent = '';
+      try { textContent = file.buffer.toString('utf8'); } catch (e) { /* binary file */ }
+      return {
+        originalName: file.originalname,
+        storedName: file.originalname,
+        path: `memory:${file.originalname}`, // placeholder path for memory storage
+        size: file.size,
+        mimetype: file.mimetype,
+        content: textContent,
+      };
+    }) : [];
 
     const repository = await Repository.create({
       name,
@@ -134,8 +118,6 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
     res.status(201).json({ success: true, repository });
   } catch (error) {
     console.error('Create repo error:', error);
-    // Clean up uploaded files on error
-    if (req.files) req.files.forEach(f => fs.existsSync(f.path) && fs.unlinkSync(f.path));
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

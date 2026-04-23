@@ -117,7 +117,7 @@ export default function RepositoryPage() {
            <div className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-300">
              <Eye className="w-4 h-4" /> <span>{repo.views} views</span>
            </div>
-           {user && user._id === repo.owner._id && (
+           {user && (user._id === repo.owner._id || user.id === repo.owner._id) && (
              <button
                onClick={handleDelete}
                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-colors"

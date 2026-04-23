@@ -24,31 +24,22 @@ router.post('/plagiarism-check', protect, processUpload.single('file'), async (r
     // Extract text content from the uploaded file (assuming utf8 text/code)
     const newContent = req.file.buffer.toString('utf8');
 
-    // Fetch existing files from other repositories
-    // If repositoryId is provided, exclude it. Otherwise, search all.
+    // Fetch existing file content from MongoDB (no disk access needed)
     const query = repositoryId ? { _id: { $ne: repositoryId } } : {};
-    const otherRepos = await Repository.find(query).limit(50); // limit for performance in this MVP
+    const otherRepos = await Repository.find(query).limit(50);
     
     let existingFiles = [];
     
-    // In a real app we'd read files from disk. For this prototype, we'll read the ones that exist.
     for (const repo of otherRepos) {
       for (const file of repo.files) {
-        try {
-          const filePath = path.resolve(file.path);
-          if (fs.existsSync(filePath)) {
-            const content = fs.readFileSync(filePath, 'utf8');
-            existingFiles.push({
-              id: file._id,
-              repositoryId: repo._id,
-              repositoryName: repo.name,
-              fileName: file.originalName,
-              content: content
-            });
-          }
-        } catch (err) {
-           console.error("Error reading existing file", err);
-           // Continue processing other files
+        if (file.content) {
+          existingFiles.push({
+            id: file._id,
+            repositoryId: repo._id,
+            repositoryName: repo.name,
+            fileName: file.originalName,
+            content: file.content,
+          });
         }
       }
     }
