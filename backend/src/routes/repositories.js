@@ -42,7 +42,7 @@ router.post('/', protect, upload.array('files', 10), async (req, res) => {
       const { checkPlagiarism } = require('../utils/plagiarism');
 
       // Fetch existing file content from MongoDB (works on ephemeral filesystems)
-      const otherRepos = await Repository.find({ owner: { $ne: req.user._id } }).limit(50);
+      const otherRepos = await Repository.find().limit(50);
       let existingFiles = [];
       for (const repo of otherRepos) {
         for (const file of repo.files) {
