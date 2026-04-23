@@ -26,7 +26,7 @@ router.post('/plagiarism-check', protect, processUpload.single('file'), async (r
 
     // Fetch existing file content from MongoDB (no disk access needed)
     const query = repositoryId ? { _id: { $ne: repositoryId } } : {};
-    const otherRepos = await Repository.find(query).limit(50);
+    const otherRepos = await Repository.find(query).sort({ createdAt: -1 }).limit(100);
     
     let existingFiles = [];
     
