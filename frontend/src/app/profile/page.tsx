@@ -1,13 +1,13 @@
 "use client";
 
 import { useAuthStore } from "../../store/authStore";
-import { Copy, Edit2, Save, X, Loader2 } from "lucide-react";
+import { Copy, Edit2, Save, X, Loader2, Trash2, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, isLoading, login } = useAuthStore();
+  const { user, isAuthenticated, isLoading, login, logout } = useAuthStore();
   const router = useRouter();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -17,6 +17,12 @@ export default function ProfilePage() {
     university: "",
     skills: ""
   });
+
+  // Delete account state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -51,6 +57,21 @@ export default function ProfilePage() {
       alert("Failed to update profile.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await api.delete("/users/account");
+      logout();
+      router.push("/");
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.message || "Failed to delete account. Please try again.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -175,9 +196,96 @@ export default function ProfilePage() {
                </div>
              </div>
            </div>
+
+           {/* Danger Zone - Delete Account */}
+           <div className="glass-panel p-6 rounded-2xl border border-red-500/20">
+             <h3 className="text-lg font-semibold text-red-400 mb-2 flex items-center gap-2">
+               <AlertTriangle className="w-5 h-5" /> Danger Zone
+             </h3>
+             <p className="text-slate-400 text-sm mb-4">
+               Permanently delete your account and all associated data including repositories, files, and plagiarism reports. This action cannot be undone.
+             </p>
+             <button
+               onClick={() => setShowDeleteModal(true)}
+               className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+             >
+               <Trash2 className="w-4 h-4" /> Delete My Account
+             </button>
+           </div>
         </div>
 
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-md p-6 rounded-2xl border border-red-500/20 relative">
+            <button
+              onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(""); setDeleteError(""); }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Delete Account</h3>
+                <p className="text-xs text-slate-400">This action is permanent and irreversible</p>
+              </div>
+            </div>
+
+            <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 mb-4">
+              <p className="text-sm text-red-300">
+                This will permanently delete:
+              </p>
+              <ul className="text-sm text-slate-400 mt-2 space-y-1 list-disc list-inside">
+                <li>Your user profile and credentials</li>
+                <li>All your repositories and uploaded files</li>
+                <li>All plagiarism reports associated with your work</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-sm text-slate-300 mb-2 block">
+                Type <span className="font-mono text-red-400 font-bold">DELETE</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full bg-navy-900/50 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-transparent transition-all font-mono"
+                placeholder="DELETE"
+              />
+            </div>
+
+            {deleteError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-md mb-4 text-sm">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(""); setDeleteError(""); }}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== "DELETE" || isDeleting}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {isDeleting ? "Deleting..." : "Delete Forever"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

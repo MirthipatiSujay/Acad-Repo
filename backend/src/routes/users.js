@@ -82,4 +82,55 @@ router.get('/', async (req, res) => {
   }
 });
 
+// @route   DELETE /api/v1/users/account
+// @desc    Delete the currently logged-in user's account and all associated data
+// @access  Private
+router.delete('/account', protect, async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // 1. Gather all repositories owned by this user
+    const userRepos = await Repository.find({ owner: userId });
+
+    // 2. Delete physical files from disk for each repository
+    const fs = require('fs');
+    const path = require('path');
+    for (const repo of userRepos) {
+      if (repo.files && repo.files.length > 0) {
+        for (const file of repo.files) {
+          try {
+            const filePath = path.resolve(file.path);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          } catch (fileErr) {
+            // Continue cleanup even if a single file fails
+          }
+        }
+      }
+    }
+
+    // 3. Remove all plagiarism reports linked to user's repositories
+    const repoIds = userRepos.map(r => r._id);
+    const PlagiarismReport = require('../models/PlagiarismReport');
+    await PlagiarismReport.deleteMany({
+      $or: [
+        { repositoryId: { $in: repoIds } },
+        { checkedBy: userId }
+      ]
+    });
+
+    // 4. Delete all repositories
+    await Repository.deleteMany({ owner: userId });
+
+    // 5. Delete the user document
+    await User.findByIdAndDelete(userId);
+
+    res.json({ success: true, message: 'Your account and all associated data have been permanently deleted.' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ success: false, message: 'Server error during account deletion' });
+  }
+});
+
 module.exports = router;
